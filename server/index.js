@@ -86,21 +86,26 @@ app.get('/api/articles', async (req, res) => {
     const { username, role } = req.query;
     const request = new sql.Request();
 
+    if (username) {
+      request.input('username', sql.NVarChar, username);
+    }
+
     let queryStr = `
       SELECT 
         a.*, 
         u1.Username as Journalist1Username,
-        u2.Username as Journalist2Username
+        u2.Username as Journalist2Username,
+        (SELECT COUNT(*) FROM ArticleReactions ar WHERE ar.ArticleId = a.Id AND ar.ReactionType = 'like') as LikesCount,
+        (SELECT COUNT(*) FROM ArticleReactions ar WHERE ar.ArticleId = a.Id AND ar.ReactionType = 'dislike') as DislikesCount
+        ${username ? `, (SELECT ReactionType FROM ArticleReactions ar WHERE ar.ArticleId = a.Id AND ar.Username = @username) as UserReaction` : `, NULL as UserReaction`}
       FROM Articles a
       LEFT JOIN Users u1 ON a.Journalist1Id = u1.Id
       LEFT JOIN Users u2 ON a.Journalist2Id = u2.Id
     `;
 
     if (role === 'editor' && username) {
-      request.input('username', sql.NVarChar, username);
       queryStr += ` WHERE a.Author = @username`;
     } else if ((role === 'jurnalist' || role === 'journalist') && username) {
-      request.input('username', sql.NVarChar, username);
       queryStr += ` WHERE u1.Username = @username OR u2.Username = @username`;
     } else {
       queryStr += ` WHERE a.Status = 'finished'`;
@@ -131,7 +136,10 @@ app.get('/api/articles', async (req, res) => {
         journalist2Id: row.Journalist2Id,
         journalist1Username: row.Journalist1Username,
         journalist2Username: row.Journalist2Username,
-        status: row.Status
+        status: row.Status,
+        likesCount: row.LikesCount || 0,
+        dislikesCount: row.DislikesCount || 0,
+        userReaction: row.UserReaction || null
       };
     });
 
@@ -251,6 +259,36 @@ app.post('/api/articles/:id/comments', async (req, res) => {
   } catch (err) {
     console.error('Error adding comment:', err);
     res.status(500).json({ error: 'Eroare la adăugarea comentariului.' });
+  }
+});
+
+app.post('/api/articles/:id/react', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { username, reactionType } = req.body;
+
+    if (!username || !['like', 'dislike'].includes(reactionType)) {
+      return res.status(400).json({ error: 'Username si tipul reactiei (like/dislike) sunt obligatorii.' });
+    }
+
+    const existing = await sql.query`SELECT ReactionType FROM ArticleReactions WHERE ArticleId = ${id} AND Username = ${username}`;
+
+    if (existing.recordset.length > 0) {
+      const currentReaction = existing.recordset[0].ReactionType;
+      if (currentReaction === reactionType) {
+        await sql.query`DELETE FROM ArticleReactions WHERE ArticleId = ${id} AND Username = ${username}`;
+        return res.json({ message: 'Reactie stearsa.' });
+      } else {
+        await sql.query`UPDATE ArticleReactions SET ReactionType = ${reactionType} WHERE ArticleId = ${id} AND Username = ${username}`;
+        return res.json({ message: 'Reactie actualizata.' });
+      }
+    } else {
+      await sql.query`INSERT INTO ArticleReactions (ArticleId, Username, ReactionType) VALUES (${id}, ${username}, ${reactionType})`;
+      return res.status(201).json({ message: 'Reactie adaugata.' });
+    }
+  } catch (err) {
+    console.error('Error reacting to article:', err);
+    res.status(500).json({ error: 'Eroare la adaugarea reactiei.' });
   }
 });
 

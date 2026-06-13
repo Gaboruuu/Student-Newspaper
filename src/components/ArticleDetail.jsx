@@ -266,6 +266,23 @@ function ArticleDetail({ article, user, onUpdate }) {
     .catch(console.error);
   };
 
+  const handleReaction = (type) => {
+    if (!user) {
+      alert("Trebuie să fii autentificat pentru a aprecia un articol.");
+      return;
+    }
+    fetch(`http://localhost:3000/api/articles/${article.id}/react`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: user.username, reactionType: type })
+    })
+    .then(res => res.json())
+    .then(() => {
+      if (onUpdate) onUpdate();
+    })
+    .catch(console.error);
+  };
+
   return (
     <div className="detail-article-wrapper animate-fade-in" key={article.id}>
       
@@ -320,6 +337,34 @@ function ArticleDetail({ article, user, onUpdate }) {
           <span>de {article.author}</span>
         </div>
         
+        {/* Like/Dislike Buttons */}
+        <div className="article-reactions" style={{ marginTop: '1rem', display: 'flex', gap: '10px' }}>
+          <button 
+            className="auth-trigger-btn"
+            style={{ 
+              background: article.userReaction === 'like' ? '#4caf50' : '#eee', 
+              color: article.userReaction === 'like' ? 'white' : '#333',
+              border: article.userReaction === 'like' ? '1px solid #4caf50' : '1px solid #ccc',
+              cursor: 'pointer'
+            }}
+            onClick={() => handleReaction('like')}
+          >
+            👍 {article.likesCount || 0}
+          </button>
+          <button 
+            className="auth-trigger-btn"
+            style={{ 
+              background: article.userReaction === 'dislike' ? '#f44336' : '#eee', 
+              color: article.userReaction === 'dislike' ? 'white' : '#333',
+              border: article.userReaction === 'dislike' ? '1px solid #f44336' : '1px solid #ccc',
+              cursor: 'pointer'
+            }}
+            onClick={() => handleReaction('dislike')}
+          >
+            👎 {article.dislikesCount || 0}
+          </button>
+        </div>
+
         {assigned.length > 0 && (!isEditing || !isEditor) && (
           <div className="detail-meta" style={{ marginTop: '0.5rem', color: '#666', fontWeight: 'bold' }}>
             <span>Jurnaliști asignați: {assigned.join(', ')}</span>

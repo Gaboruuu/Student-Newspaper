@@ -53,6 +53,21 @@ export const connectDB = async () => {
             )
         `);
         console.log('Comments table initialized.');
+
+        // Initialize ArticleReactions table
+        await pool.request().query(`
+            IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='ArticleReactions' and xtype='U')
+            CREATE TABLE ArticleReactions (
+                Id INT IDENTITY(1,1) PRIMARY KEY,
+                ArticleId INT NOT NULL,
+                Username NVARCHAR(255) NOT NULL,
+                ReactionType NVARCHAR(50) NOT NULL,
+                CONSTRAINT FK_ArticleReactions_Article FOREIGN KEY (ArticleId) REFERENCES Articles(Id) ON DELETE CASCADE,
+                CONSTRAINT UQ_ArticleReactions_User_Article UNIQUE (ArticleId, Username)
+            )
+        `);
+        console.log('ArticleReactions table initialized.');
+
         return pool;
     } catch (err) {
         console.error('Database connection failed:', err);
