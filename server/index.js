@@ -56,34 +56,6 @@ const officialTitles = [
   "Rezultate simulare Evaluare Națională publicate"
 ];
 
-const generateArticles = (count = 12) => {
-  const generated = [];
-  let titles = faker.helpers.shuffle([...schoolTitles]);
-
-  for (let i = 0; i < count; i++) {
-    if (titles.length === 0) titles = faker.helpers.shuffle([...schoolTitles]);
-    const title = titles.pop();
-
-    const selectedParagraphs = faker.helpers.arrayElements(schoolParagraphs, 2);
-    const content = selectedParagraphs.join('\n\n') + '\n\n' + faker.lorem.paragraphs({ min: 3, max: 6 }, '\n\n');
-
-    generated.push({
-      id: faker.string.uuid(),
-      title: title,
-      date: faker.date.recent({ days: 15 }).toLocaleDateString('ro-RO', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-      }),
-      author: faker.person.fullName(),
-      image: faker.image.urlLoremFlickr({ category: 'highschool,education' }),
-      excerpt: selectedParagraphs[0],
-      content: content
-    });
-  }
-  return generated;
-};
-
 const generateSidebarItems = (titlesArray, count = 5) => {
   const items = [];
   let titles = faker.helpers.shuffle([...titlesArray]);
@@ -105,13 +77,140 @@ const generateSidebarItems = (titlesArray, count = 5) => {
 }
 
 // Generate static data once on startup
-const articles = generateArticles(12);
 const trendingTopics = generateSidebarItems(trendingTitles, 6);
 const officialNews = generateSidebarItems(officialTitles, 5);
 
 // API Routes
-app.get('/api/articles', (req, res) => {
-  res.json(articles);
+app.get('/api/articles', async (req, res) => {
+  try {
+    const { username, role } = req.query;
+    const request = new sql.Request();
+
+    let queryStr = `
+      SELECT 
+        a.*, 
+        u1.Username as Journalist1Username,
+        u2.Username as Journalist2Username
+      FROM Articles a
+      LEFT JOIN Users u1 ON a.Journalist1Id = u1.Id
+      LEFT JOIN Users u2 ON a.Journalist2Id = u2.Id
+    `;
+
+    if (role === 'editor' && username) {
+      request.input('username', sql.NVarChar, username);
+      queryStr += ` WHERE a.Author = @username`;
+    } else if ((role === 'jurnalist' || role === 'journalist') && username) {
+      request.input('username', sql.NVarChar, username);
+      queryStr += ` WHERE u1.Username = @username OR u2.Username = @username`;
+    } else {
+      queryStr += ` WHERE a.Status = 'finished'`;
+    }
+
+    queryStr += ` ORDER BY a.Id DESC`;
+
+    const result = await request.query(queryStr);
+    
+    const fetchedArticles = result.recordset.map(row => ({
+      id: row.Id,
+      title: row.Title,
+      content: row.Content,
+      excerpt: row.Excerpt,
+      image: row.Image,
+      date: row.Date,
+      author: row.Author,
+      journalist1Id: row.Journalist1Id,
+      journalist2Id: row.Journalist2Id,
+      journalist1Username: row.Journalist1Username,
+      journalist2Username: row.Journalist2Username,
+      status: row.Status
+    }));
+
+    res.json(fetchedArticles);
+  } catch (err) {
+    console.error('Error fetching articles:', err);
+    res.status(500).json({ error: 'Eroare la preluarea articolelor.' });
+  }
+});
+
+app.post('/api/articles', async (req, res) => {
+  try {
+    const { title, content, excerpt, image, author } = req.body;
+    
+    if (!title || !author) {
+      return res.status(400).json({ error: 'Titlul și autorul sunt obligatorii.' });
+    }
+
+    const date = new Date().toLocaleDateString('ro-RO', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+
+    // Provide default placeholders for empty content to match frontend expectations
+    const defContent = content || 'Conținut articol...';
+    const defExcerpt = excerpt || 'Articol în curs de redactare...';
+    const defImage = image || faker.image.urlLoremFlickr({ category: 'highschool,education' });
+
+    await sql.query`
+      INSERT INTO Articles (Title, Content, Excerpt, Image, Date, Author, Status)
+      VALUES (${title}, ${defContent}, ${defExcerpt}, ${defImage}, ${date}, ${author}, 'started')
+    `;
+
+    res.status(201).json({ message: 'Articol creat cu succes.' });
+  } catch (err) {
+    console.error('Error creating article:', err);
+    res.status(500).json({ error: 'Eroare la crearea articolului.' });
+  }
+});
+
+app.put('/api/articles/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, journalist1Id, journalist2Id, status } = req.body;
+
+    if (!title || !status) {
+      return res.status(400).json({ error: 'Titlul și statusul sunt obligatorii.' });
+    }
+
+    const j1Id = journalist1Id || null;
+    const j2Id = journalist2Id || null;
+
+    await sql.query`
+      UPDATE Articles
+      SET 
+        Title = ${title},
+        Journalist1Id = ${j1Id},
+        Journalist2Id = ${j2Id},
+        Status = ${status}
+      WHERE Id = ${id}
+    `;
+
+    res.json({ message: 'Articol actualizat cu succes.' });
+  } catch (err) {
+    console.error('Error updating article:', err);
+    res.status(500).json({ error: 'Eroare la actualizarea articolului.' });
+  }
+});
+
+app.delete('/api/articles/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await sql.query`DELETE FROM Articles WHERE Id = ${id}`;
+    res.json({ message: 'Articol șters cu succes.' });
+  } catch (err) {
+    console.error('Error deleting article:', err);
+    res.status(500).json({ error: 'Eroare la ștergerea articolului.' });
+  }
+});
+
+app.get('/api/users/journalists', async (req, res) => {
+  try {
+    const result = await sql.query`SELECT Id, Username FROM Users WHERE Role = 'jurnalist' OR Role = 'journalist'`;
+    res.json(result.recordset);
+  } catch (err) {
+    console.error('Error fetching journalists:', err);
+    res.status(500).json({ error: 'Eroare la preluarea jurnaliștilor.' });
+  }
 });
 
 app.get('/api/articles/trending', (req, res) => {

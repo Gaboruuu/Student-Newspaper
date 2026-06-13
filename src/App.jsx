@@ -5,33 +5,7 @@ import Home from "./pages/Home";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 
-function Header({ openLogin, openRegister }) {
-  const [user, setUser] = useState(null);
-
-  useEffect(() => {
-    const updateAuth = () => {
-      const storedUser = localStorage.getItem("user");
-      if (storedUser) {
-        setUser(JSON.parse(storedUser));
-      } else {
-        setUser(null);
-      }
-    };
-    
-    // Initial check
-    updateAuth();
-
-    // Listen for custom event
-    window.addEventListener('authChange', updateAuth);
-    return () => window.removeEventListener('authChange', updateAuth);
-  }, []);
-
-  const handleLogout = () => {
-    localStorage.removeItem("user");
-    setUser(null);
-    window.dispatchEvent(new Event('authChange'));
-  };
-
+function Header({ openLogin, openRegister, user, handleLogout }) {
   const today = new Date().toLocaleDateString("ro-RO", {
     weekday: "long",
     year: "numeric",
@@ -86,6 +60,31 @@ function Header({ openLogin, openRegister }) {
 function App() {
   const [isLoginOpen, setIsLoginOpen] = useState(false);
   const [isRegisterOpen, setIsRegisterOpen] = useState(false);
+  const [user, setUser] = useState(null);
+
+  useEffect(() => {
+    const updateAuth = () => {
+      const storedUser = localStorage.getItem("user");
+      if (storedUser) {
+        setUser(JSON.parse(storedUser));
+      } else {
+        setUser(null);
+      }
+    };
+    
+    // Initial check
+    updateAuth();
+
+    // Listen for custom event
+    window.addEventListener('authChange', updateAuth);
+    return () => window.removeEventListener('authChange', updateAuth);
+  }, []);
+
+  const handleLogout = () => {
+    localStorage.removeItem("user");
+    setUser(null);
+    window.dispatchEvent(new Event('authChange'));
+  };
 
   const openLogin = () => {
     setIsRegisterOpen(false);
@@ -104,8 +103,13 @@ function App() {
 
   return (
     <div className="app-wrapper">
-      <Header openLogin={openLogin} openRegister={openRegister} />
-      <Home />
+      <Header 
+        openLogin={openLogin} 
+        openRegister={openRegister} 
+        user={user} 
+        handleLogout={handleLogout} 
+      />
+      <Home user={user} />
 
       {isLoginOpen && (
         <Login 
