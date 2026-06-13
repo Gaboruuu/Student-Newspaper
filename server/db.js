@@ -38,6 +38,21 @@ export const connectDB = async () => {
             )
         `);
         console.log('Articles table initialized.');
+
+        // Initialize Comments table
+        await pool.request().query(`
+            IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Comments' and xtype='U')
+            CREATE TABLE Comments (
+                Id INT IDENTITY(1,1) PRIMARY KEY,
+                ArticleId INT NOT NULL,
+                Author NVARCHAR(255) NOT NULL,
+                Content NVARCHAR(MAX) NOT NULL,
+                TopPercent FLOAT NOT NULL,
+                LeftPercent FLOAT NOT NULL,
+                CONSTRAINT FK_Comments_Article FOREIGN KEY (ArticleId) REFERENCES Articles(Id) ON DELETE CASCADE
+            )
+        `);
+        console.log('Comments table initialized.');
         return pool;
     } catch (err) {
         console.error('Database connection failed:', err);

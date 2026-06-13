@@ -110,20 +110,30 @@ app.get('/api/articles', async (req, res) => {
 
     const result = await request.query(queryStr);
     
-    const fetchedArticles = result.recordset.map(row => ({
-      id: row.Id,
-      title: row.Title,
-      content: row.Content,
-      excerpt: row.Excerpt,
-      image: row.Image,
-      date: row.Date,
-      author: row.Author,
-      journalist1Id: row.Journalist1Id,
-      journalist2Id: row.Journalist2Id,
-      journalist1Username: row.Journalist1Username,
-      journalist2Username: row.Journalist2Username,
-      status: row.Status
-    }));
+    const fetchedArticles = result.recordset.map(row => {
+      let parsedContent;
+      try {
+        parsedContent = JSON.parse(row.Content);
+      } catch (e) {
+        // Fallback for legacy string content
+        parsedContent = [{ type: 'paragraph', value: row.Content }];
+      }
+
+      return {
+        id: row.Id,
+        title: row.Title,
+        content: parsedContent,
+        excerpt: row.Excerpt,
+        image: row.Image,
+        date: row.Date,
+        author: row.Author,
+        journalist1Id: row.Journalist1Id,
+        journalist2Id: row.Journalist2Id,
+        journalist1Username: row.Journalist1Username,
+        journalist2Username: row.Journalist2Username,
+        status: row.Status
+      };
+    });
 
     res.json(fetchedArticles);
   } catch (err) {
@@ -147,7 +157,12 @@ app.post('/api/articles', async (req, res) => {
     });
 
     // Provide default placeholders for empty content to match frontend expectations
-    const defContent = content || 'Conținut articol...';
+    let defContent = content;
+    if (!defContent) {
+      defContent = JSON.stringify([{ type: 'paragraph', value: 'Conținut articol...' }]);
+    } else if (typeof content !== 'string') {
+      defContent = JSON.stringify(content);
+    }
     const defExcerpt = excerpt || 'Articol în curs de redactare...';
     const defImage = image || faker.image.urlLoremFlickr({ category: 'highschool,education' });
 
@@ -166,7 +181,7 @@ app.post('/api/articles', async (req, res) => {
 app.put('/api/articles/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, journalist1Id, journalist2Id, status } = req.body;
+    const { title, content, image, journalist1Id, journalist2Id, status } = req.body;
 
     if (!title || !status) {
       return res.status(400).json({ error: 'Titlul și statusul sunt obligatorii.' });
@@ -174,11 +189,15 @@ app.put('/api/articles/:id', async (req, res) => {
 
     const j1Id = journalist1Id || null;
     const j2Id = journalist2Id || null;
+    const updateContent = typeof content === 'string' ? content : JSON.stringify(content || []);
+    const updateImage = image || '';
 
     await sql.query`
       UPDATE Articles
       SET 
         Title = ${title},
+        Content = ${updateContent},
+        Image = ${updateImage},
         Journalist1Id = ${j1Id},
         Journalist2Id = ${j2Id},
         Status = ${status}

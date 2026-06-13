@@ -100,6 +100,8 @@ test('Articles API CRUD Operations', async (t) => {
   await t.test('PUT /api/articles/:id - update article success', async () => {
     const res = await request.put('/api/articles/1').send({
       title: 'Updated Title',
+      content: 'Updated Content',
+      image: 'http://example.com/img.jpg',
       status: 'pending',
       journalist1Id: 2
     });
@@ -107,8 +109,10 @@ test('Articles API CRUD Operations', async (t) => {
     assert.strictEqual(res.status, 200);
     assert.strictEqual(res.body.message, 'Articol actualizat cu succes.');
     assert.strictEqual(mockLastQuery.values[0], 'Updated Title'); // title
-    assert.strictEqual(mockLastQuery.values[1], 2); // journalist1Id
-    assert.strictEqual(mockLastQuery.values[3], 'pending'); // status
+    assert.strictEqual(mockLastQuery.values[1], 'Updated Content'); // content
+    assert.strictEqual(mockLastQuery.values[2], 'http://example.com/img.jpg'); // image
+    assert.strictEqual(mockLastQuery.values[3], 2); // journalist1Id
+    assert.strictEqual(mockLastQuery.values[5], 'pending'); // status
   });
 
   await t.test('PUT /api/articles/:id - fails validation', async () => {
