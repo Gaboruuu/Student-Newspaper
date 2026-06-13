@@ -1,4 +1,83 @@
 import { useState, useEffect } from "react";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+
+function SortableBlock({ id, block, index, updateBlock, removeBlock, canSort, canEditContent }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+  } = useSortable({ id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    display: 'flex',
+    gap: '10px',
+    marginBottom: '1rem',
+    alignItems: 'flex-start',
+    background: '#fff',
+    zIndex: transform ? 1 : 0,
+    position: 'relative'
+  };
+
+  return (
+    <div ref={setNodeRef} style={style}>
+      {canSort && (
+        <button 
+          type="button" 
+          {...attributes} 
+          {...listeners} 
+          style={{ cursor: 'grab', padding: '0.5rem', background: '#eee', border: 'none', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        >
+          ☰
+        </button>
+      )}
+      {block.type === 'paragraph' ? (
+        <textarea
+          value={block.value}
+          onChange={(e) => updateBlock(index, e.target.value)}
+          disabled={!canEditContent}
+          style={{ flex: 1, minHeight: '100px', padding: '0.5rem', fontFamily: 'inherit', fontSize: '1rem', lineHeight: '1.5', backgroundColor: !canEditContent ? '#f9f9f9' : '#fff' }}
+          placeholder="Scrie paragraf..."
+        />
+      ) : (
+        <div style={{ flex: 1 }}>
+          <input
+            type="text"
+            value={block.value}
+            onChange={(e) => updateBlock(index, e.target.value)}
+            disabled={!canEditContent}
+            style={{ width: '100%', padding: '0.5rem', fontFamily: 'inherit', backgroundColor: !canEditContent ? '#f9f9f9' : '#fff' }}
+            placeholder="URL Imagine inline"
+          />
+          {block.value && <img src={block.value} alt="inline" style={{ maxWidth: '100%', marginTop: '10px', maxHeight: '200px', objectFit: 'cover' }} />}
+        </div>
+      )}
+      {canEditContent && (
+        <button onClick={() => removeBlock(index)} style={{ padding: '0.5rem', background: '#ffcdd2', border: 'none', color: '#c62828', cursor: 'pointer', borderRadius: '4px' }}>
+          Șterge
+        </button>
+      )}
+    </div>
+  );
+}
 
 function ArticleDetail({ article, user, onUpdate }) {
   const [journalistsList, setJournalistsList] = useState([]);
@@ -37,13 +116,13 @@ function ArticleDetail({ article, user, onUpdate }) {
       setEditImage(article.image || "");
       
       if (Array.isArray(article.content)) {
-        setEditBlocks(article.content);
+        setEditBlocks(article.content.map(b => b.id ? b : { ...b, id: crypto.randomUUID() }));
       } else if (typeof article.content === 'string') {
         try {
           const parsed = JSON.parse(article.content);
-          setEditBlocks(Array.isArray(parsed) ? parsed : [{ type: 'paragraph', value: article.content }]);
+          setEditBlocks((Array.isArray(parsed) ? parsed : [{ type: 'paragraph', value: article.content }]).map(b => b.id ? b : { ...b, id: crypto.randomUUID() }));
         } catch {
-          setEditBlocks([{ type: 'paragraph', value: article.content }]);
+          setEditBlocks([{ type: 'paragraph', value: article.content, id: crypto.randomUUID() }]);
         }
       } else {
         setEditBlocks([]);
@@ -114,7 +193,27 @@ function ArticleDetail({ article, user, onUpdate }) {
 
   // Block management functions
   const addBlock = (type) => {
-    setEditBlocks([...editBlocks, { type, value: '' }]);
+    setEditBlocks([...editBlocks, { id: crypto.randomUUID(), type, value: '' }]);
+  };
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleDragEnd = (event) => {
+    const { active, over } = event;
+    
+    if (over && active.id !== over.id) {
+      setEditBlocks((items) => {
+        const oldIndex = items.findIndex((item) => item.id === active.id);
+        const newIndex = items.findIndex((item) => item.id === over.id);
+        
+        return arrayMove(items, oldIndex, newIndex);
+      });
+    }
   };
 
   const updateBlock = (index, value) => {
@@ -312,39 +411,38 @@ function ArticleDetail({ article, user, onUpdate }) {
           </div>
         )}
 
-        {isEditing && isJournalist ? (
+        {isEditing && (isJournalist || isEditor) ? (
           <div className="blocks-editor">
-            {editBlocks.map((block, i) => (
-              <div key={i} style={{ display: 'flex', gap: '10px', marginBottom: '1rem', alignItems: 'flex-start' }}>
-                {block.type === 'paragraph' ? (
-                  <textarea
-                    value={block.value}
-                    onChange={(e) => updateBlock(i, e.target.value)}
-                    style={{ flex: 1, minHeight: '100px', padding: '0.5rem', fontFamily: 'inherit', fontSize: '1rem', lineHeight: '1.5' }}
-                    placeholder="Scrie paragraf..."
+            <DndContext 
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+            >
+              <SortableContext 
+                items={editBlocks.map(b => b.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                {editBlocks.map((block, i) => (
+                  <SortableBlock 
+                    key={block.id} 
+                    id={block.id} 
+                    block={block} 
+                    index={i} 
+                    updateBlock={updateBlock} 
+                    removeBlock={removeBlock}
+                    canSort={isEditor}
+                    canEditContent={isJournalist}
                   />
-                ) : (
-                  <div style={{ flex: 1 }}>
-                    <input
-                      type="text"
-                      value={block.value}
-                      onChange={(e) => updateBlock(i, e.target.value)}
-                      style={{ width: '100%', padding: '0.5rem', fontFamily: 'inherit' }}
-                      placeholder="URL Imagine inline"
-                    />
-                    {block.value && <img src={block.value} alt="inline" style={{ maxWidth: '100%', marginTop: '10px', maxHeight: '200px', objectFit: 'cover' }} />}
-                  </div>
-                )}
-                <button onClick={() => removeBlock(i)} style={{ padding: '0.5rem', background: '#ffcdd2', border: 'none', color: '#c62828', cursor: 'pointer', borderRadius: '4px' }}>
-                  Șterge
-                </button>
-              </div>
-            ))}
+                ))}
+              </SortableContext>
+            </DndContext>
             
-            <div style={{ display: 'flex', gap: '10px', marginTop: '1rem' }}>
-              <button onClick={() => addBlock('paragraph')} style={{ padding: '0.5rem 1rem', background: '#e0e0e0', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>+ Adaugă Paragraf</button>
-              <button onClick={() => addBlock('image')} style={{ padding: '0.5rem 1rem', background: '#e0e0e0', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>+ Adaugă Imagine</button>
-            </div>
+            {isJournalist && (
+              <div style={{ display: 'flex', gap: '10px', marginTop: '1rem' }}>
+                <button onClick={() => addBlock('paragraph')} style={{ padding: '0.5rem 1rem', background: '#e0e0e0', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>+ Adaugă Paragraf</button>
+                <button onClick={() => addBlock('image')} style={{ padding: '0.5rem 1rem', background: '#e0e0e0', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>+ Adaugă Imagine</button>
+              </div>
+            )}
           </div>
         ) : (
           (Array.isArray(article.content) ? article.content : []).map((block, i) => {
