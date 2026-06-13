@@ -13,6 +13,12 @@ function ArticleDetail({ article, user, onUpdate }) {
   // Now editContent holds an array of blocks
   const [editBlocks, setEditBlocks] = useState([]);
 
+  // Comments state
+  const [comments, setComments] = useState([]);
+  const [newCommentPos, setNewCommentPos] = useState(null);
+  const [newCommentText, setNewCommentText] = useState("");
+  const [showComments, setShowComments] = useState(true);
+
   useEffect(() => {
     if (user?.role === 'editor') {
       fetch('http://localhost:3000/api/users/journalists')
@@ -33,11 +39,22 @@ function ArticleDetail({ article, user, onUpdate }) {
       if (Array.isArray(article.content)) {
         setEditBlocks(article.content);
       } else if (typeof article.content === 'string') {
-        setEditBlocks([{ type: 'paragraph', value: article.content }]);
+        try {
+          const parsed = JSON.parse(article.content);
+          setEditBlocks(Array.isArray(parsed) ? parsed : [{ type: 'paragraph', value: article.content }]);
+        } catch {
+          setEditBlocks([{ type: 'paragraph', value: article.content }]);
+        }
       } else {
         setEditBlocks([]);
       }
       setIsEditing(false); // reset on article change
+      
+      // Fetch comments for article
+      fetch(`http://localhost:3000/api/articles/${article.id}/comments`)
+        .then(res => res.json())
+        .then(data => setComments(data))
+        .catch(console.error);
     }
   }, [article]);
 
@@ -111,6 +128,45 @@ function ArticleDetail({ article, user, onUpdate }) {
     setEditBlocks(newBlocks);
   };
 
+  const handleContentClick = (e) => {
+    // Only editor who created the article can add comments
+    if (isEditor && article.author === user?.username && !isEditing && showComments) {
+      // Prevent click if we are clicking inside an existing comment or new comment box
+      if (e.target.closest('.comment-marker') || e.target.closest('.new-comment-box')) return;
+      
+      const rect = e.currentTarget.getBoundingClientRect();
+      const topPercent = ((e.clientY - rect.top) / rect.height) * 100;
+      const leftPercent = ((e.clientX - rect.left) / rect.width) * 100;
+      
+      setNewCommentPos({ top: topPercent, left: leftPercent });
+      setNewCommentText("");
+    }
+  };
+
+  const handleSaveComment = () => {
+    if (!newCommentText.trim()) return;
+    fetch(`http://localhost:3000/api/articles/${article.id}/comments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        content: newCommentText,
+        topPercent: newCommentPos.top,
+        leftPercent: newCommentPos.left,
+        author: user.username
+      })
+    })
+    .then(res => res.json())
+    .then(() => {
+      setNewCommentPos(null);
+      setNewCommentText("");
+      // refetch comments
+      return fetch(`http://localhost:3000/api/articles/${article.id}/comments`);
+    })
+    .then(res => res.json())
+    .then(data => setComments(data))
+    .catch(console.error);
+  };
+
   return (
     <div className="detail-article-wrapper animate-fade-in" key={article.id}>
       
@@ -131,6 +187,9 @@ function ArticleDetail({ article, user, onUpdate }) {
               {isEditor ? 'Controale Editor' : 'Controale Jurnalist'}
             </h3>
             <div style={{ display: 'flex', gap: '10px' }}>
+              <button className="auth-trigger-btn" onClick={() => setShowComments(!showComments)}>
+                {showComments ? 'Ascunde Comentarii' : 'Arată Comentarii'}
+              </button>
               <button className="auth-trigger-btn" onClick={() => isEditing ? handleSave() : setIsEditing(true)}>
                 {isEditing ? 'Salvează' : 'Editează Articol'}
               </button>
@@ -201,7 +260,7 @@ function ArticleDetail({ article, user, onUpdate }) {
       </header>
 
       {/* Cover Image */}
-      {isEditing ? (
+      {isEditing && isJournalist ? (
         <div style={{ marginBottom: '2rem', padding: '1rem', border: '1px solid #ddd', borderRadius: '8px' }}>
           <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '0.5rem' }}>Imagine Principală (Cover):</label>
           <input 
@@ -217,8 +276,43 @@ function ArticleDetail({ article, user, onUpdate }) {
       )}
 
       {/* Content Blocks */}
-      <div className="detail-content">
-        {isEditing ? (
+      <div 
+        className="detail-content detail-content-container"
+        onClick={handleContentClick}
+      >
+        {!isEditing && showComments && comments && comments.map(c => (
+          <div 
+            key={c.Id} 
+            className="comment-marker" 
+            style={{ top: `${c.TopPercent}%`, left: `${c.LeftPercent}%` }}
+          >
+            !
+            <div className="comment-bubble">
+              <strong>{c.Author}:</strong> {c.Content}
+            </div>
+          </div>
+        ))}
+        
+        {!isEditing && newCommentPos && (
+          <div 
+            className="new-comment-box" 
+            style={{ top: `${newCommentPos.top}%`, left: `${newCommentPos.left}%` }}
+            onClick={e => e.stopPropagation()}
+          >
+            <textarea 
+              value={newCommentText} 
+              onChange={e => setNewCommentText(e.target.value)} 
+              placeholder="Adaugă un comentariu..."
+              autoFocus
+            />
+            <div className="new-comment-actions">
+              <button className="btn-cancel" onClick={(e) => { e.stopPropagation(); setNewCommentPos(null); }}>Anulează</button>
+              <button className="btn-save" onClick={(e) => { e.stopPropagation(); handleSaveComment(); }}>Salvează</button>
+            </div>
+          </div>
+        )}
+
+        {isEditing && isJournalist ? (
           <div className="blocks-editor">
             {editBlocks.map((block, i) => (
               <div key={i} style={{ display: 'flex', gap: '10px', marginBottom: '1rem', alignItems: 'flex-start' }}>

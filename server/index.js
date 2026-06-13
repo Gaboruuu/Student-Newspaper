@@ -222,6 +222,38 @@ app.delete('/api/articles/:id', async (req, res) => {
   }
 });
 
+app.get('/api/articles/:id/comments', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await sql.query`SELECT Id, ArticleId, Author, Content, TopPercent, LeftPercent FROM Comments WHERE ArticleId = ${id}`;
+    res.json(result.recordset);
+  } catch (err) {
+    console.error('Error fetching comments:', err);
+    res.status(500).json({ error: 'Eroare la preluarea comentariilor.' });
+  }
+});
+
+app.post('/api/articles/:id/comments', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { content, topPercent, leftPercent, author } = req.body;
+
+    if (!content || topPercent === undefined || leftPercent === undefined || !author) {
+      return res.status(400).json({ error: 'Date insuficiente pentru comentariu.' });
+    }
+
+    await sql.query`
+      INSERT INTO Comments (ArticleId, Author, Content, TopPercent, LeftPercent)
+      VALUES (${id}, ${author}, ${content}, ${topPercent}, ${leftPercent})
+    `;
+
+    res.status(201).json({ message: 'Comentariu adăugat cu succes.' });
+  } catch (err) {
+    console.error('Error adding comment:', err);
+    res.status(500).json({ error: 'Eroare la adăugarea comentariului.' });
+  }
+});
+
 app.get('/api/users/journalists', async (req, res) => {
   try {
     const result = await sql.query`SELECT Id, Username FROM Users WHERE Role = 'jurnalist' OR Role = 'journalist'`;
