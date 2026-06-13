@@ -291,7 +291,10 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
+if (process.env.NODE_ENV !== 'test') {
+  app.listen(port, () => {
+    console.log(`Backend server listening at http://localhost:${port}`);
+  });
+}
 
-app.listen(port, () => {
-  console.log(`Backend server listening at http://localhost:${port}`);
-});
+export default app;
